@@ -1,0 +1,93 @@
+# GitLab CI/CD configuration
+# P13@3DS.com
+# please read Gitlab-CI-Setup.md to enable CI/CD on the repository
+
+# default image : node 10.16 is LTS @ September-2019
+image: dswidgetlab/node
+
+stages:
+    - build
+    - test
+    - deploy
+
+cache:
+    # setup a cache for each projet:branch (since it is the same runner for all widget-lab projects)
+    key: ${CI_PROJECT_PATH_SLUG}-${CI_COMMIT_REF_SLUG}
+    paths:
+        - node_modules/
+
+##########################
+# npm build
+# stage: build
+# build widget (npm run build)
+
+npm_build:
+    stage: build
+    tags:
+        - widgetlab
+    artifacts:
+        expire_in: 10min
+        paths:
+            - dist/
+    script:
+        - npm install
+        - npm run build
+
+##########################
+# npm build with dep's latest versions
+# stage: test
+# patch package.json, install, build and run Mocha tests
+# (since versions are not reusable : do not use cache)
+
+npm_build_latest:
+    stage: test
+    tags:
+        - widgetlab
+    only:
+        - master
+    cache: {}
+    artifacts:
+        when: on_failure
+        paths:
+            - package*.json
+    allow_failure: true
+    script:
+        - ncu --configFilePath ./test
+        - npm install
+        - npm run build
+
+##########################
+# push_widget (master only)
+# stage: deploy
+# Push widget to AWS S3
+
+push_widget:
+    stage: deploy
+    image: dswidgetlab/awscli
+    tags:
+        - widgetlab
+    only:
+        - master
+    allow_failure: true
+    script:
+        - export S3_DST=s3://btcc/widget-lab/$CI_PROJECT_NAME/
+        - aws s3 sync ./dist/ $S3_DST --acl public-read --delete
+        - echo "***** $GITLAB_USER_NAME pushed $CI_PROJECT_NAME (commit $CI_COMMIT_SHORT_SHA) to $S3_DST *****"
+
+##########################
+# zip_to_s3 (master only)
+# stage: deploy
+# Push widget package to AWS S3
+
+zip_to_s3:
+    stage: deploy
+    image: dswidgetlab/awscli
+    tags:
+        - widgetlab
+    only:
+        - master
+    script:
+        - zip -r /home/s3/$CI_PROJECT_NAME.zip . -x@.zipignore
+        - export S3_DST=s3://btcc/widget-lab/templates/
+        - aws s3 sync /home/s3/ $S3_DST --acl public-read
+        - echo "***** $GITLAB_USER_NAME pushed $CI_PROJECT_NAME (commit $CI_COMMIT_SHORT_SHA) to $S3_DST$CI_PROJECT_NAME.zip *****"

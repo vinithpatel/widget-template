@@ -1,0 +1,8 @@
+.zipignore
+dist/*
+node_modules/*
+.git*
+test/*
+package-lock.json
+p2sconfig.json
+README.md
